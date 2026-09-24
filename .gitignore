@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+
+# PyCharm
+.idea/
+*.iml
+
+# 数据文件（数据库、中间产物不上传）
+data/kaoyan.db
+data/output/
+data/settings.json
+
+# 资料（有版权，不上传）
+data/books/
+data/questions/
+
+# 备份
+*.db
+*.log
