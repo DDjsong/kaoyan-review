@@ -5,3 +5,4 @@ python-docx
 openai
 sqlalchemy
 altair
+psycopg2-binary

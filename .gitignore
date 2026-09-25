@@ -24,3 +24,5 @@ data/questions/
 # 备份
 *.db
 *.log
+# Streamlit Secrets（绝不能上传，包含数据库密码）
+.streamlit/secrets.toml
