@@ -93,22 +93,22 @@ if st.session_state.round_phase == "cover":
 
     if st.button("🚀 开始本轮", type="primary",
                  use_container_width=True, disabled=not can_start):
-        st.session_state.round_chapter = chapter_choice
-        st.session_state.round_size = round_size
-        st.session_state.round_index = 0
-        st.session_state.round_events = []
-        st.session_state.qid = None
-        st.session_state.phase = "question"
-        st.session_state.self_rating = None
-        st.session_state.skip_ids = set()
-        st.session_state.return_to_qid = None
-        st.session_state.last_question_info = None
-        st.session_state.last_ai_summary = None
-        st.session_state.last_ai_teaching = None
-        st.session_state.last_ai_link = None
-        st.session_state.round_phase = "quiz"
+        with st.spinner("正在准备题目..."):
+            st.session_state.round_chapter = chapter_choice
+            st.session_state.round_size = round_size
+            st.session_state.round_index = 0
+            st.session_state.round_events = []
+            st.session_state.qid = None
+            st.session_state.phase = "question"
+            st.session_state.self_rating = None
+            st.session_state.skip_ids = set()
+            st.session_state.return_to_qid = None
+            st.session_state.last_question_info = None
+            st.session_state.last_ai_summary = None
+            st.session_state.last_ai_teaching = None
+            st.session_state.last_ai_link = None
+            st.session_state.round_phase = "quiz"
         st.rerun()
-
     # ---------- 抽题规则（默认收起） ----------
     st.markdown("---")
     with st.expander("🎯 抽题规则（点击展开）", expanded=False):
