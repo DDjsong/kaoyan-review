@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from core.settings import load_settings
 from datetime import datetime, timedelta
 from collections import Counter
 
@@ -120,7 +121,10 @@ if last and last.advice_json:
         last_advice_text = ""
 
 # ---------- 4. 触发分析 ----------
-if st.button("🧠 让 AI 老师分析我现在的状态", type="primary"):
+settings = load_settings()
+if not settings.get("ai_overall_enabled", True):
+    st.info("⚠️ AI 老师分析已在设置中关闭。可在【⚙️ 设置 → AI 功能】中开启。")
+elif st.button("🧠 让 AI 老师分析我现在的状态", type="primary"):
     with st.spinner("AI 老师正在分析你的学习数据..."):
         summary_text = build_summary()
         result = ai_module.analyze_overall(summary_text, last_advice_text)

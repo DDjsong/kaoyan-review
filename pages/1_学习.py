@@ -258,6 +258,8 @@ if st.session_state.round_phase == "quiz":
 
             if info["is_correct"]:
                 st.caption("这题答对了，不需要诊断。")
+            elif not settings.get("ai_diagnose_enabled", True):
+                st.caption("⚠️ AI 诊断已在设置中关闭。可在【⚙️ 设置 → AI 功能】中开启。")
             else:
                 if st.session_state.last_ai_summary is None:
                     if st.button("🔍 诊断错因 + 薄弱点", key="last_ai_btn1"):
