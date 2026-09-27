@@ -46,14 +46,12 @@ for key, default in [
 if st.session_state.round_phase == "cover":
     st.title("📖 开始新一轮")
 
-    # 从设置读（只读展示）
     round_size = int(settings.get("round_size", 20))
 
     chapters = [r[0] for r in session.query(Question.chapter_name).distinct().all() if r[0]]
     chapters.sort()
     chapter_options = ["错题本", "全部章节"] + chapters
 
-    # 错题本数量预览
     wrong_qids_count = len(set(
         r[0] for r in
         session.query(StudyEvent.item_id)
@@ -62,10 +60,11 @@ if st.session_state.round_phase == "cover":
         .distinct().all()
     ))
 
+    # ---------- 出题范围 + 本轮题数 并排 ----------
     c1, c2 = st.columns([2, 1])
+
     with c1:
-        st.markdown("### 📚 出题范围")
-        # 默认选中 "全部章节"
+        st.markdown("#### 📚 出题范围")
         default_idx = 1
         if st.session_state.round_chapter in chapter_options:
             default_idx = chapter_options.index(st.session_state.round_chapter)
@@ -73,41 +72,24 @@ if st.session_state.round_phase == "cover":
             "选择范围", chapter_options,
             index=default_idx,
             key="cover_chapter",
+            label_visibility="collapsed",
         )
-        if chapter_choice == "错题本":
-            if wrong_qids_count == 0:
-                st.warning("错题本里暂时没有题。先去刷几道，做错了才会进错题本。")
-            else:
-                st.info(f"📕 错题本中共有 **{wrong_qids_count}** 道题")
 
     with c2:
-        st.markdown("### 🔢 本轮题数")
-        st.markdown(f"## {round_size} 题")
-        st.caption("如需修改，请到【⚙️ 设置 → 学习目标】")
+        st.markdown("#### 🔢 本轮题数")
+        st.markdown(f"### {round_size} 题")
 
-    st.markdown("---")
-    st.markdown("### 🎯 抽题规则")
+    # ---------- 错题本提示 ----------
     if chapter_choice == "错题本":
-        st.caption(
-            "**错题本模式**：只从你做错过的题里抽，优先复习到期错题。\n\n"
-            "连续答对 3 次且间隔超过 30 天的题会**归档**，不再出现在错题本。"
-        )
-    else:
-        st.caption(
-            "系统按以下优先级加权抽题（自动排除本轮已做、已跳过的题）：\n\n"
-            "1. **50%** 到期复习题（错题、学过的题）\n"
-            "2. **25%** 高权重知识点题目（重点知识点）\n"
-            "3. **15%** 新题（从未做过）\n"
-            "4. **10%** 其他随机\n\n"
-            "在【设置 → 重点权重】里调整章节/知识点权重，会影响抽取。"
-        )
+        if wrong_qids_count == 0:
+            st.warning("错题本里暂时没有题。先去刷几道，做错了才会进错题本。")
+        else:
+            st.success(f"📕 错题本中共有 **{wrong_qids_count}** 道题")
 
-    st.markdown("---")
+    st.caption("如需修改每轮题数，请到【⚙️ 设置 → 学习目标】")
 
-    # 开始按钮（错题本为空时禁用）
-    can_start = True
-    if chapter_choice == "错题本" and wrong_qids_count == 0:
-        can_start = False
+    # ---------- 开始按钮（放到显眼位置） ----------
+    can_start = not (chapter_choice == "错题本" and wrong_qids_count == 0)
 
     if st.button("🚀 开始本轮", type="primary",
                  use_container_width=True, disabled=not can_start):
@@ -126,6 +108,24 @@ if st.session_state.round_phase == "cover":
         st.session_state.last_ai_link = None
         st.session_state.round_phase = "quiz"
         st.rerun()
+
+    # ---------- 抽题规则（默认收起） ----------
+    st.markdown("---")
+    with st.expander("🎯 抽题规则（点击展开）", expanded=False):
+        if chapter_choice == "错题本":
+            st.markdown(
+                "**错题本模式**：只从你做错过的题里抽，优先复习到期错题。\n\n"
+                "连续答对 3 次且间隔超过 30 天的题会**归档**，不再出现在错题本。"
+            )
+        else:
+            st.markdown(
+                "系统按以下优先级加权抽题（自动排除本轮已做、已跳过的题）：\n\n"
+                "1. **50%** 到期复习题（错题、学过的题）\n"
+                "2. **25%** 高权重知识点题目（重点知识点）\n"
+                "3. **15%** 新题（从未做过）\n"
+                "4. **10%** 其他随机\n\n"
+                "在【设置 → 重点权重】里调整章节/知识点权重，会影响抽取。"
+            )
 
     st.stop()
 
