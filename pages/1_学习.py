@@ -35,6 +35,7 @@ for key, default in [
     ("last_ai_summary", None),
     ("last_ai_teaching", None),
     ("last_ai_link", None),
+    ("pending_error_type", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -140,11 +141,13 @@ if st.session_state.round_phase == "quiz":
     done = st.session_state.round_index
     st.progress(done / total if total else 0, text=f"进度：{done} / {total}")
 
-    def finish_question(qid, correct, error_type):
+
+    def finish_question(qid, correct, error_type, note=None):
         session.add(StudyEvent(
             item_type="question", item_id=qid,
             self_rating=st.session_state.self_rating,
             is_correct=correct, error_type=error_type,
+            note=note,  # ← 新增
         ))
         ri = (session.query(ReviewItem)
               .filter(ReviewItem.item_type == "question", ReviewItem.item_id == qid)
@@ -172,6 +175,7 @@ if st.session_state.round_phase == "quiz":
             "chapter": q_obj.chapter_name,
             "self_rating": st.session_state.self_rating,
             "is_correct": correct, "error_type": error_type,
+            "note": note,  # ← 新增
         })
         st.session_state.last_question_info = {
             "qid": qid, "stem": q_obj.stem, "answer": q_obj.answer,
@@ -184,6 +188,7 @@ if st.session_state.round_phase == "quiz":
         st.session_state.last_ai_teaching = None
         st.session_state.last_ai_link = None
         st.session_state.skip_ids.discard(qid)
+        st.session_state.pending_error_type = None  # ← 清空
 
         if st.session_state.return_to_qid is not None:
             st.session_state.qid = st.session_state.return_to_qid
@@ -391,13 +396,48 @@ if st.session_state.round_phase == "quiz":
         st.markdown("#### 🩺 错因是？")
         error_options = ["记混了", "记错了", "没理解", "不会应用", "粗心"]
         cols = st.columns(len(error_options))
-        chosen = None
         for i, opt in enumerate(error_options):
             if cols[i].button(opt, use_container_width=True, key=f"err_{opt}"):
-                chosen = opt
-        st.caption("💡 选完错因进入下一题，可点顶部「🔍 上一题 AI 诊断」查看详解")
-        if chosen:
-            finish_question(q.id, correct=False, error_type=chosen)
+                st.session_state.pending_error_type = opt
+                st.session_state.phase = "note_input"
+                st.rerun()
+        st.caption("💡 选完错因后可以写笔记")
+
+    if st.session_state.phase == "note_input":
+        st.markdown("---")
+        st.markdown("### 💡 答案")
+        st.markdown(q.answer or "（无答案）")
+
+        st.markdown("---")
+        st.markdown(f"**你的错因**：`{st.session_state.pending_error_type}`")
+        st.markdown("#### 📝 写点笔记（可选）")
+        st.caption("记录理解、易错点、记忆方法等。下次做错题时能看到。")
+
+        note = st.text_area(
+            "笔记内容",
+            key=f"note_area_{q.id}",
+            height=150,
+            placeholder="例如：DNA 连接酶负责连接缺口（磷酸二酯键），DNA 聚合酶负责填补缺口，二者容易混淆。",
+            label_visibility="collapsed",
+        )
+
+        c1, c2, c3 = st.columns([2, 2, 1])
+        if c1.button("💾 保存并继续", type="primary", use_container_width=True):
+            finish_question(
+                q.id, correct=False,
+                error_type=st.session_state.pending_error_type,
+                note=note.strip() if note.strip() else None,
+            )
+        if c2.button("⏭ 跳过笔记", use_container_width=True):
+            finish_question(
+                q.id, correct=False,
+                error_type=st.session_state.pending_error_type,
+                note=None,
+            )
+        if c3.button("↩️ 重选错因", use_container_width=True):
+            st.session_state.pending_error_type = None
+            st.session_state.phase = "error_select"
+            st.rerun()
 
     st.stop()
 

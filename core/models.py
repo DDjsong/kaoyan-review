@@ -57,6 +57,7 @@ class StudyEvent(Base):
     self_rating = Column(String(20), nullable=True)
     is_correct = Column(Boolean, nullable=True)
     error_type = Column(String(30), nullable=True)
+    note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
 
 

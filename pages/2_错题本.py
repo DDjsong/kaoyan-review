@@ -98,6 +98,8 @@ with tab1:
                 )
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("最近错因", last_evt.error_type if last_evt else "—")
+                if last_evt and last_evt.note:
+                    st.info(f"📝 **我的笔记**：{last_evt.note}")
                 col2.metric("复习次数", ri.reps)
                 col3.metric("下次复习", ri.due.strftime("%m-%d") if ri.due else "—")
                 col4.metric("当前间隔", f"{ri.interval} 天")
