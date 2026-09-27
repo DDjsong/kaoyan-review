@@ -68,7 +68,15 @@ else:
 # 向后兼容：旧代码里引用的 DB_PATH
 DB_PATH = DB_URL
 
-engine = create_engine(DB_URL, echo=False, future=True, pool_pre_ping=True)
+engine = create_engine(
+    DB_URL,
+    echo=False,
+    future=True,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=300,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, future=True)
 
 

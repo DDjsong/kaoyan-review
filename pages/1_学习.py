@@ -14,6 +14,12 @@ from core import ai as ai_module
 from core import quiz as quiz_module
 from core.settings import load_settings
 
+st.set_page_config(
+    page_title="考研专业课复习系统",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 st.set_page_config(page_title="刷题", page_icon="📖", layout="wide")
 
 session = get_session()
@@ -49,17 +55,13 @@ if st.session_state.round_phase == "cover":
 
     round_size = int(settings.get("round_size", 20))
 
-    chapters = [r[0] for r in session.query(Question.chapter_name).distinct().all() if r[0]]
+    from core.cache import get_chapters_cached, get_wrong_count_cached
+
+    chapters = get_chapters_cached(session)
     chapters.sort()
     chapter_options = ["错题本", "全部章节"] + chapters
 
-    wrong_qids_count = len(set(
-        r[0] for r in
-        session.query(StudyEvent.item_id)
-        .filter(StudyEvent.item_type == "question",
-                StudyEvent.is_correct == False)
-        .distinct().all()
-    ))
+    wrong_qids_count = get_wrong_count_cached(session)
 
     # ---------- 出题范围 + 本轮题数 并排 ----------
     c1, c2 = st.columns([2, 1])

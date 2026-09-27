@@ -189,3 +189,67 @@ else:
                     st.markdown(f"- {s}")
             if data.get("next_focus"):
                 st.markdown(f"**下一步**：{data['next_focus']}")
+
+# ========================================================
+# AI 对话（追加在文件末尾）
+# ========================================================
+st.markdown("---")
+st.markdown("### 💬 和 AI 老师对话")
+st.caption("AI 已经了解你的全部做题数据、错题、笔记，可以直接问它任何问题")
+
+# 初始化对话历史
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# 快捷问题
+st.markdown("**💡 试试问：**")
+quick_cols = st.columns(4)
+quick_questions = [
+    "我最近哪里最弱？",
+    "帮我分析一下错因",
+    "给出接下来一周复习计划",
+    "怎么理解错配修复？",
+]
+for i, qq in enumerate(quick_questions):
+    if quick_cols[i].button(qq, use_container_width=True, key=f"quick_{i}"):
+        st.session_state.chat_history.append({"role": "user", "content": qq})
+        st.session_state.chat_pending = True
+        st.rerun()
+
+# 显示历史消息
+for msg in st.session_state.chat_history:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# 处理"待回复"状态
+if st.session_state.get("chat_pending"):
+    with st.chat_message("assistant"):
+        with st.spinner("AI 老师思考中..."):
+            try:
+                reply = ai_module.chat_with_ai(
+                    session,
+                    st.session_state.chat_history[-1]["content"],
+                    st.session_state.chat_history[:-1],
+                )
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": reply}
+                )
+            except Exception as e:
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": f"⚠️ 出错了：{e}"}
+                )
+    st.session_state.chat_pending = False
+    st.rerun()
+
+# 输入框
+user_input = st.chat_input("输入你的问题...")
+if user_input:
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
+    st.session_state.chat_pending = True
+    st.rerun()
+
+# 清空对话
+if st.session_state.chat_history:
+    if st.button("🗑 清空对话", key="clear_chat"):
+        st.session_state.chat_history = []
+        st.rerun()
