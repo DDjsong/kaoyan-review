@@ -6,15 +6,30 @@ from openai import OpenAI
 _client = None
 
 
+def _get_api_key():
+    """优先从 Streamlit Secrets 读，其次从环境变量读"""
+    # 1) Streamlit Secrets（部署在 Cloud 时）
+    try:
+        import streamlit as st
+        if "DEEPSEEK_API_KEY" in st.secrets:
+            return st.secrets["DEEPSEEK_API_KEY"]
+    except Exception:
+        pass
+    # 2) 系统环境变量（本地开发时）
+    return os.environ.get("DEEPSEEK_API_KEY")
+
+
 def get_client():
     global _client
     if _client is None:
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        api_key = _get_api_key()
         if not api_key:
-            raise RuntimeError("未找到环境变量 DEEPSEEK_API_KEY")
+            raise RuntimeError(
+                "未找到 DEEPSEEK_API_KEY。本地请设置系统环境变量；"
+                "云端请在 Streamlit Cloud 的 Secrets 里配置。"
+            )
         _client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     return _client
-
 
 def _extract_json(text):
     text = text.strip()
