@@ -45,7 +45,6 @@ if not events:
     st.info("所选时间范围内还没有学习记录。去刷题吧！")
     st.stop()
 
-# 总览
 total = len(events)
 correct_count = sum(1 for e in events if e.is_correct)
 wrong_count = total - correct_count
@@ -60,20 +59,22 @@ c4.metric("正确率", f"{accuracy:.1f}%")
 
 st.markdown("---")
 
-# 通用 Altair 样式
+# 通用 Altair 样式（浅色背景适用）
 AXIS_STYLE = dict(
     labelFontSize=13,
     titleFontSize=13,
     tickSize=0,
-    domainColor="#666",
+    domainColor="#94a3b8",
     domainWidth=1,
-    gridColor="#333",
-    gridOpacity=0.3,
-    labelColor="#ddd",
-    titleColor="#ddd",
+    gridColor="#e2e8f0",
+    gridOpacity=0.6,
+    labelColor="#334155",
+    titleColor="#334155",
 )
 
-BLUE = "#5B9BD5"
+LABEL_COLOR = "#334155"
+BLUE = "#4A90E2"
+RED = "#E06C75"
 
 
 # ---------------- 回忆自评分布 ----------------
@@ -83,6 +84,11 @@ self_counts = {
     "fuzzy": sum(1 for e in events if e.self_rating == "fuzzy"),
     "forgot": sum(1 for e in events if e.self_rating == "forgot"),
 }
+# 兼容中文自评（旧数据可能存的是中文）
+self_counts["remember"] += sum(1 for e in events if e.self_rating == "记得")
+self_counts["fuzzy"] += sum(1 for e in events if e.self_rating == "模糊")
+self_counts["forgot"] += sum(1 for e in events if e.self_rating == "忘记")
+
 self_df = pd.DataFrame({
     "自评": ["记得", "模糊", "忘记"],
     "次数": [self_counts["remember"], self_counts["fuzzy"], self_counts["forgot"]],
@@ -94,13 +100,10 @@ base = alt.Chart(self_df).encode(
         axis=alt.Axis(labelAngle=0, title=None, **AXIS_STYLE),
         sort=["记得", "模糊", "忘记"],
     ),
-    y=alt.Y(
-        "次数:Q",
-        axis=alt.Axis(title=None, **AXIS_STYLE),
-    ),
+    y=alt.Y("次数:Q", axis=alt.Axis(title=None, **AXIS_STYLE)),
 )
 bars = base.mark_bar(size=80, cornerRadius=6, color=BLUE)
-labels = base.mark_text(dy=-10, fontSize=14, color="#ddd").encode(text="次数:Q")
+labels = base.mark_text(dy=-10, fontSize=14, color=LABEL_COLOR, fontWeight="bold").encode(text="次数:Q")
 st.altair_chart((bars + labels).properties(height=300), use_container_width=True)
 
 # ---------------- 错因分布 ----------------
@@ -122,13 +125,10 @@ if err_counts:
             axis=alt.Axis(labelAngle=0, title=None, **AXIS_STYLE),
             sort=err_df["错因"].tolist(),
         ),
-        y=alt.Y(
-            "次数:Q",
-            axis=alt.Axis(title=None, **AXIS_STYLE),
-        ),
+        y=alt.Y("次数:Q", axis=alt.Axis(title=None, **AXIS_STYLE)),
     )
-    bars = base.mark_bar(size=80, cornerRadius=6, color="#E06C75")
-    labels = base.mark_text(dy=-10, fontSize=14, color="#ddd").encode(text="次数:Q")
+    bars = base.mark_bar(size=80, cornerRadius=6, color=RED)
+    labels = base.mark_text(dy=-10, fontSize=14, color=LABEL_COLOR, fontWeight="bold").encode(text="次数:Q")
     st.altair_chart((bars + labels).properties(height=300), use_container_width=True)
 else:
     st.caption("暂无错误记录")
@@ -195,7 +195,6 @@ if chapter_stats:
         })
     chapter_df = pd.DataFrame(chapter_rows).sort_values("正确率")
 
-    # 横向条形图（章节名长，横着看好读）
     bars = alt.Chart(chapter_df).mark_bar(size=24, cornerRadius=6, color=BLUE).encode(
         y=alt.Y(
             "章节:N",
@@ -210,7 +209,7 @@ if chapter_stats:
         tooltip=["章节", "做题数", "正确数", "正确率"],
     )
     labels = alt.Chart(chapter_df).mark_text(
-        align="left", dx=6, fontSize=13, color="#ddd"
+        align="left", dx=6, fontSize=13, color=LABEL_COLOR, fontWeight="bold"
     ).encode(
         y=alt.Y("章节:N", sort=chapter_df["章节"].tolist()),
         x=alt.X("正确率:Q"),

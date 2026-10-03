@@ -31,13 +31,16 @@ class Question(Base):
     __tablename__ = "question"
     id = Column(Integer, primary_key=True, autoincrement=True)
     type = Column(String(20), default="简答")
+    question_type = Column(String(20), nullable=True)     # 判断/选择/填空/名词解释/问答
     stem = Column(Text, nullable=False)
+    options = Column(Text, nullable=True)                 # JSON: {"A": "...", "B": "..."}
+    blanks = Column(Text, nullable=True)                  # JSON: ["答案1", "答案2"]
     answer = Column(Text, nullable=True)
     explanation = Column(Text, nullable=True)
     source = Column(String(200), nullable=True)
     year = Column(Integer, nullable=True)
     kp_text = Column(Text, nullable=True)
-    chapter_name = Column(String(200), nullable=True)   # ← 新增
+    chapter_name = Column(String(200), nullable=True)
     chapter_id = Column(Integer, ForeignKey("chapter.id"), nullable=True)
     book = Column(String(100), nullable=True)
 
