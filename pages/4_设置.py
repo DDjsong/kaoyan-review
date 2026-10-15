@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.db import get_session, DB_PATH
 from core.models import (
-    Question, KnowledgePoint, QuestionKP, ReviewItem, StudyEvent, AIAdvice
+    Question, KnowledgePoint, QuestionKP, ReviewItem, StudyEvent, AIAdvice, active_q_filter
 )
 from core.settings import (
     load_settings, save_settings, get_chapter_importance
@@ -73,7 +73,8 @@ with tab2:
     st.caption("1-5 分：影响该章节题目被抽到的概率。默认 3")
 
     chapters_all = [
-        r[0] for r in session.query(Question.chapter_name).distinct().all()
+        r[0] for r in session.query(Question.chapter_name)
+        .filter(active_q_filter()).distinct().all()
         if r[0]
     ]
     chapters_all.sort()
@@ -173,7 +174,7 @@ with tab3:
 with tab4:
     st.markdown("### 数据统计")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("题目", session.query(Question).count())
+    c1.metric("题目", session.query(Question).filter(active_q_filter()).count())
     c2.metric("知识点", session.query(KnowledgePoint).count())
     c3.metric("学习记录", session.query(StudyEvent).count())
     c4.metric("AI 建议", session.query(AIAdvice).count())
@@ -186,7 +187,9 @@ with tab4:
         rows = session.query(Question).all()
         df = pd.DataFrame([{
             "id": q.id, "章节": q.chapter_name, "年份": q.year,
+            "题号": q.question_no, "题型": q.question_type,
             "题干": q.stem, "答案": q.answer, "知识点": q.kp_text,
+            "状态": q.data_status or "正常",
         } for q in rows])
         buf = BytesIO()
         df.to_csv(buf, index=False, encoding="utf-8-sig")
@@ -259,8 +262,8 @@ with tab4:
                 session.query(AIAdvice).delete()
                 session.query(ReviewItem).delete()
                 session.commit()
-                # 重新创建所有复习项
-                for (qid,) in session.query(Question.id).all():
+                # 重新创建所有复习项（只针对未停用题）
+                for (qid,) in session.query(Question.id).filter(active_q_filter()).all():
                     session.add(ReviewItem(item_type="question", item_id=qid))
                 session.commit()
                 st.success("已清空学习记录")

@@ -167,12 +167,20 @@ CHAT_SYSTEM_TEMPLATE = """你是一位资深生物化学考研辅导老师，正
 
 def _build_student_context(session):
     """构建学生数据摘要，作为 AI 的上下文"""
-    from core.models import StudyEvent, Question, KnowledgePoint, QuestionKP
+    from core.models import StudyEvent, Question, KnowledgePoint, QuestionKP, active_q_filter
     from collections import Counter
 
     events = session.query(StudyEvent).filter(
         StudyEvent.item_type == "question"
     ).all()
+    if not events:
+        return "学生还没有做题记录。"
+
+    # 排除「已停用」题目的做题记录，避免污染 AI 诊断
+    active_qids = set(
+        r[0] for r in session.query(Question.id).filter(active_q_filter()).all()
+    )
+    events = [e for e in events if e.item_id in active_qids]
     if not events:
         return "学生还没有做题记录。"
 
@@ -223,6 +231,7 @@ def _build_student_context(session):
     recent_wrong = (session.query(StudyEvent)
                     .filter(StudyEvent.item_type == "question",
                             StudyEvent.is_correct == False)
+                    .filter(StudyEvent.item_id.in_(active_qids))
                     .order_by(StudyEvent.created_at.desc())
                     .limit(15).all())
     if recent_wrong:

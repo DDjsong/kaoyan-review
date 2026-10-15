@@ -9,7 +9,9 @@ from sqlalchemy import desc
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.db import get_session
-from core.models import Question, StudyEvent, ReviewItem, KnowledgePoint, QuestionKP
+from core.models import (
+    Question, StudyEvent, ReviewItem, KnowledgePoint, QuestionKP, active_q_filter
+)
 
 st.set_page_config(page_title="错题本", page_icon="📕", layout="wide")
 st.title("📕 错题本")
@@ -29,11 +31,12 @@ if not error_qids:
     st.info("🎉 还没有错题。先去刷题吧！")
     st.stop()
 
-# 取出这些题目 + 对应的复习项
+# 取出这些题目 + 对应的复习项（排除已停用题）
 rows = (
     session.query(Question, ReviewItem)
     .join(ReviewItem, (ReviewItem.item_type == "question") & (ReviewItem.item_id == Question.id))
     .filter(Question.id.in_(error_qids))
+    .filter(active_q_filter())
     .order_by(ReviewItem.due)
     .all()
 )

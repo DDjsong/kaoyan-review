@@ -25,6 +25,14 @@ session = get_session()
 
 # ---------- 1. 收集数据 ----------
 events = session.query(StudyEvent).filter(StudyEvent.item_type == "question").all()
+
+# 排除「已停用」题目的做题记录，避免污染 AI 诊断
+_active_qids = set(
+    r[0] for r in session.query(Question.id)
+    .filter(func.coalesce(Question.data_status, "正常") != "停用").all()
+)
+events = [e for e in events if e.item_id in _active_qids]
+
 total = len(events)
 correct = sum(1 for e in events if e.is_correct)
 accuracy = correct / total * 100 if total else 0
@@ -93,10 +101,11 @@ def build_summary():
             for name, cnt in top_kps:
                 lines.append(f"  - {name}: {cnt} 次")
 
-    # 最近 10 道错题
+    # 最近 10 道错题（排除停用题）
     recent_wrong_events = (
         session.query(StudyEvent)
         .filter(StudyEvent.item_type == "question", StudyEvent.is_correct == False)
+        .filter(StudyEvent.item_id.in_(_active_qids))
         .order_by(StudyEvent.created_at.desc())
         .limit(10).all()
     )

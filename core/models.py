@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey
+    Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey, func
 )
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
@@ -43,6 +43,9 @@ class Question(Base):
     chapter_name = Column(String(200), nullable=True)
     chapter_id = Column(Integer, ForeignKey("chapter.id"), nullable=True)
     book = Column(String(100), nullable=True)
+    question_no = Column(Integer, nullable=True)      # 题号
+    answer_mode = Column(String(20), nullable=True)   # choice/input/self
+    data_status = Column(String(20), default="正常")  # 正常/存疑/停用
 
 
 class QuestionKP(Base):
@@ -81,3 +84,22 @@ class AIAdvice(Base):
     created_at = Column(DateTime, default=datetime.now)
     advice_json = Column(Text, nullable=True)
     stats_snapshot = Column(Text, nullable=True)
+
+
+# ========================================================
+# 公共查询过滤条件
+# ========================================================
+
+def active_q_filter():
+    """只保留「未停用」的题目。
+
+    - data_status = '停用' 的题（如暂无答案的 2026 年题）不参与抽题/统计。
+    - 用 coalesce 兜底：data_status 为 NULL 的老数据视作「正常」，
+      否则 SQL 里 `NULL != '停用'` 结果为 NULL，会把老题误排除。
+    """
+    return func.coalesce(Question.data_status, "正常") != "停用"
+
+
+def is_doubtful(q):
+    """判断题是否为「存疑」状态（答案待核对）。"""
+    return (getattr(q, "data_status", None) or "正常") == "存疑"

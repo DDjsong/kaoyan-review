@@ -10,7 +10,7 @@ from sqlalchemy import func
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.db import get_session
-from core.models import StudyEvent, Question, KnowledgePoint, QuestionKP, ReviewItem
+from core.models import StudyEvent, Question, KnowledgePoint, QuestionKP, ReviewItem, active_q_filter
 
 st.set_page_config(page_title="总结", page_icon="📊", layout="wide")
 st.title("📊 学习总结")
@@ -40,6 +40,12 @@ q = session.query(StudyEvent).filter(StudyEvent.item_type == "question")
 if start:
     q = q.filter(StudyEvent.created_at >= start)
 events = q.all()
+
+# 排除「已停用」题目的做题记录
+_active_qids = set(
+    r[0] for r in session.query(Question.id).filter(active_q_filter()).all()
+)
+events = [e for e in events if e.item_id in _active_qids]
 
 if not events:
     st.info("所选时间范围内还没有学习记录。去刷题吧！")

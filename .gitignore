@@ -26,3 +26,15 @@ data/questions/
 *.log
 # Streamlit Secrets（绝不能上传，包含数据库密码）
 .streamlit/secrets.toml
+
+# 题库原始扫描件与 OCR 中间产物（大文件 / 有版权，不进仓库）
+# 保留：生化总题库.xlsx 及各年真题/答案的 xlsx（结构化数据）
+data/exams/**/*.pdf
+data/exams/**/*.docx
+data/exams/**/*.txt
+data/exams/**/_img_*/
+data/exams/**/*_test3p.*
+data/exams/**/*_issues.txt
+data/exams/**/*_题号冲突.txt
+data/exams/**/*_备份*.xlsx
+data/exams/**/missing_questions.xlsx

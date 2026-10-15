@@ -6,6 +6,11 @@ from core.models import Question, ReviewItem, StudyEvent, KnowledgePoint, Questi
 from core.settings import get_chapter_importance
 
 
+# 统一的"未停用"过滤条件（coalesce 兜底 NULL，老数据也当正常）
+def _active_filter():
+    return func.coalesce(Question.data_status, "正常") != "停用"
+
+
 def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
     """加权抽题。查询已优化为批量，避免逐题查库。"""
     now = datetime.now()
@@ -40,7 +45,9 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
         else:
             chosen_id = random.choice(candidates)
 
-        return session.query(Question).filter(Question.id == chosen_id).first()
+        return (session.query(Question)
+                .filter(Question.id == chosen_id, _active_filter())
+                .first())
 
     # ============ 普通模式 ============
     # 1) 一次查询：所有做过的题
@@ -51,8 +58,8 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
         .distinct().all()
     )
 
-    # 2) 一次查询：候选题目（全部）
-    all_q = session.query(Question)
+    # 2) 一次查询：候选题目（已排除停用题）
+    all_q = session.query(Question).filter(_active_filter())
     if chapter_filter != "全部章节":
         all_q = all_q.filter(Question.chapter_name == chapter_filter)
     all_candidates = all_q.all()
@@ -110,7 +117,6 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
             new_qids.append(q.id)
 
     if not valid_qids:
-        # 全部被排除，重试一次（清空 exclude）
         if exclude:
             return pick_next_question(session, chapter_filter, set(), set())
         return None
@@ -157,12 +163,14 @@ def find_similar_question(session, source_qid, exclude_ids, chapter_fallback=Fal
               session.query(QuestionKP.kp_id)
               .filter(QuestionKP.question_id == source_qid).all()]
     exclude = set(exclude_ids) | {source_qid}
+    active = _active_filter()
 
     if kp_ids:
         q = (session.query(Question)
              .join(QuestionKP, QuestionKP.question_id == Question.id)
              .filter(QuestionKP.kp_id.in_(kp_ids))
              .filter(~Question.id.in_(exclude))
+             .filter(active)
              .order_by(func.random())
              .first())
         if q:
@@ -172,6 +180,7 @@ def find_similar_question(session, source_qid, exclude_ids, chapter_fallback=Fal
         return (session.query(Question)
                 .filter(Question.chapter_name == chapter_name)
                 .filter(~Question.id.in_(exclude))
+                .filter(active)
                 .order_by(func.random())
                 .first())
     return None

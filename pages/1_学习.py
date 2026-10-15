@@ -355,6 +355,8 @@ if st.session_state.round_phase == "quiz":
 
     st.markdown("---")
     st.markdown("### 📝 题干")
+    if (q.data_status or "正常") == "存疑":
+        st.warning("⚠️ 本题答案存疑（待核对），仅供参考，请勿据此判断自己的薄弱点。")
     st.markdown(f"**{q.stem}**")
     if q.kp_text:
         with st.expander("🔖 涉及知识点"):
