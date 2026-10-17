@@ -227,7 +227,7 @@ def _build_student_context(session):
             for name, cnt in top_kps:
                 lines.append(f"  - {name}: {cnt} 次")
 
-    # 最近 15 道错题（含错因、笔记）
+    # 最近 15 道错题（含题干、正确答案、解析、错因、笔记；批量查询避免 N+1）
     recent_wrong = (session.query(StudyEvent)
                     .filter(StudyEvent.item_type == "question",
                             StudyEvent.is_correct == False)
@@ -235,14 +235,20 @@ def _build_student_context(session):
                     .order_by(StudyEvent.created_at.desc())
                     .limit(15).all())
     if recent_wrong:
-        lines.append("\n最近 15 道错题：")
+        wrong_qids = [e.item_id for e in recent_wrong]
+        q_map = {q.id: q for q in session.query(Question).filter(Question.id.in_(wrong_qids)).all()}
+        lines.append("\n最近 15 道错题（题干 + 正确答案 + 解析）：")
         for e in recent_wrong:
-            q = session.query(Question).filter(Question.id == e.item_id).first()
+            q = q_map.get(e.item_id)
             if not q:
                 continue
-            line = f"  - [{q.year}年] {q.stem[:50]} | 错因：{e.error_type or '未选'}"
+            line = f"  - [{q.year}年] 题干：{q.stem[:80]}"
+            line += f" | 正确答案：{(q.answer or '')[:60]}"
+            if q.explanation:
+                line += f" | 解析：{q.explanation[:100]}"
+            line += f" | 错因：{e.error_type or '未选'}"
             if e.note:
-                line += f" | 笔记：{e.note[:80]}"
+                line += f" | 笔记：{e.note[:60]}"
             lines.append(line)
 
     # 学生自评统计

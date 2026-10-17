@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+import random
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -9,18 +11,17 @@ import altair as alt
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.db import get_session
-from core.models import Question, ReviewItem, StudyEvent, KnowledgePoint, QuestionKP
+from core.models import Question, ReviewItem, StudyEvent, KnowledgePoint, QuestionKP, active_q_filter
 from core import ai as ai_module
 from core import quiz as quiz_module
 from core.settings import load_settings
 
 st.set_page_config(
-    page_title="考研专业课复习系统",
-    page_icon="📚",
+    page_title="刷题",
+    page_icon="📖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-st.set_page_config(page_title="刷题", page_icon="📖", layout="wide")
 
 session = get_session()
 settings = load_settings()
@@ -32,6 +33,8 @@ for key, default in [
     ("round_index", 0),
     ("round_events", []),
     ("round_chapter", "全部章节"),
+    ("round_year", None),
+    ("retry_qid", None),
     ("qid", None),
     ("phase", "question"),           # question / answer_confirm / error_select
     ("self_rating", None),
@@ -63,8 +66,13 @@ if st.session_state.round_phase == "cover":
 
     wrong_qids_count = get_wrong_count_cached(session)
 
-    # ---------- 出题范围 + 本轮题数 并排 ----------
-    c1, c2 = st.columns([2, 1])
+    # ---------- 年份列表（套卷模式） ----------
+    year_rows = session.query(Question.year).filter(active_q_filter()).distinct().all()
+    year_list = sorted([r[0] for r in year_rows if r[0]])
+    year_options = ["不限年份"] + [f"{y} 年" for y in year_list]
+
+    # ---------- 出题范围 + 年份 + 本轮题数 并排 ----------
+    c1, c2, c3 = st.columns([2, 1, 1])
 
     with c1:
         st.markdown("#### 📚 出题范围")
@@ -79,8 +87,24 @@ if st.session_state.round_phase == "cover":
         )
 
     with c2:
+        st.markdown("#### 🗓 年份（套卷）")
+        default_year_idx = 0
+        if st.session_state.round_year:
+            label = f"{st.session_state.round_year} 年"
+            if label in year_options:
+                default_year_idx = year_options.index(label)
+        year_choice_label = st.selectbox(
+            "年份", year_options, index=default_year_idx,
+            key="cover_year", label_visibility="collapsed",
+        )
+        year_choice = None if year_choice_label == "不限年份" else int(year_choice_label.replace(" 年", ""))
+
+    with c3:
         st.markdown("#### 🔢 本轮题数")
-        st.markdown(f"### {round_size} 题")
+        round_size = st.number_input(
+            "题数", min_value=1, max_value=200, value=round_size,
+            step=5, label_visibility="collapsed",
+        )
 
     # ---------- 错题本提示 ----------
     if chapter_choice == "错题本":
@@ -89,7 +113,7 @@ if st.session_state.round_phase == "cover":
         else:
             st.success(f"📕 错题本中共有 **{wrong_qids_count}** 道题")
 
-    st.caption("如需修改每轮题数，请到【⚙️ 设置 → 学习目标】")
+    st.caption("年份选「不限年份」时按加权抽题；选具体年份则按该年真题的题号顺序成套刷题。")
 
     # ---------- 开始按钮（放到显眼位置） ----------
     can_start = not (chapter_choice == "错题本" and wrong_qids_count == 0)
@@ -98,6 +122,7 @@ if st.session_state.round_phase == "cover":
                  use_container_width=True, disabled=not can_start):
         with st.spinner("正在准备题目..."):
             st.session_state.round_chapter = chapter_choice
+            st.session_state.round_year = year_choice
             st.session_state.round_size = round_size
             st.session_state.round_index = 0
             st.session_state.round_events = []
@@ -160,9 +185,11 @@ if st.session_state.round_phase == "quiz":
             session.flush()
         if correct:
             ri.reps += 1
-            ri.interval = max(1, int(ri.interval * ri.ease)) if ri.interval > 0 else 1
+            base_interval = max(1, int(ri.interval * ri.ease)) if ri.interval > 0 else 1
+            # ±10% 随机抖动，避免同批题集中在同一天到期（复习雪崩）
+            ri.interval = max(1, int(base_interval * random.uniform(0.9, 1.1)))
             ri.ease = min(2.5, ri.ease + 0.1)
-            ri.state = "archived" if (ri.reps >= 3 and ri.interval > 30) else "review"
+            ri.state = "archived" if (ri.reps >= 4 and ri.interval >= 21) else "review"
         else:
             ri.reps = 0
             ri.interval = 1
@@ -191,6 +218,7 @@ if st.session_state.round_phase == "quiz":
         st.session_state.last_ai_link = None
         st.session_state.skip_ids.discard(qid)
         st.session_state.pending_error_type = None  # ← 清空
+        st.session_state.judge_result = None  # ← 清空判卷结果
 
         if st.session_state.return_to_qid is not None:
             st.session_state.qid = st.session_state.return_to_qid
@@ -210,18 +238,67 @@ if st.session_state.round_phase == "quiz":
                 st.session_state.self_rating = None
                 st.rerun()
 
-    if st.session_state.qid is None:
-        q = quiz_module.pick_next_question(
-            session,
-            chapter_filter=st.session_state.round_chapter,
-            exclude_ids=set(e["qid"] for e in st.session_state.round_events),
-            skip_ids=st.session_state.skip_ids,
-        )
-        if q is None:
-            st.warning("没有可用题目，本轮结束。")
-            st.session_state.round_phase = "summary"
+
+    def _check_blank(correct, user):
+        """填空题模糊匹配判卷：多空用「；」分隔，同义词用「/」分隔，括号为注释。"""
+        import re
+        def norm(s):
+            if not s:
+                return ""
+            s = s.strip().lower()
+            s = re.sub(r"\s+", "", s)
+            s = s.translate(str.maketrans("，；：（）", ",;:()"))
+            return s
+        c = norm(correct)
+        u = norm(user)
+        if not u:
+            return False
+        blanks = [b for b in c.split(";") if b] or [c]
+        for b in blanks:
+            candidates = [re.sub(r"[（(].*?[)）]", "", x) or x for x in b.split("/") if x]
+            if not any(x in u for x in candidates):
+                return False
+        return True
+
+
+    def _judge_objective(q, user_answer, is_blank=False):
+        """客观题判卷：答对直接记录并进入下一题；答错记录判卷结果并进入错因选择。"""
+        correct_answer = (q.answer or "").strip()
+        if is_blank:
+            user_is_correct = _check_blank(correct_answer, user_answer)
+        elif q.question_type == "判断":
+            user_is_correct = (user_answer == correct_answer)
+        else:
+            user_is_correct = (user_answer.upper() == correct_answer.upper())
+        if user_is_correct:
+            finish_question(q.id, correct=True, error_type=None)
+        else:
+            st.session_state.judge_result = {
+                "user_answer": user_answer,
+                "correct_answer": correct_answer,
+            }
+            st.session_state.phase = "error_select"
             st.rerun()
-        st.session_state.qid = q.id
+
+
+    if st.session_state.qid is None:
+        retry_qid = st.session_state.get("retry_qid")
+        if retry_qid is not None:
+            st.session_state.qid = retry_qid
+            st.session_state.retry_qid = None
+        else:
+            q = quiz_module.pick_next_question(
+                session,
+                chapter_filter=st.session_state.round_chapter,
+                exclude_ids=set(e["qid"] for e in st.session_state.round_events),
+                skip_ids=st.session_state.skip_ids,
+                year_filter=st.session_state.round_year,
+            )
+            if q is None:
+                st.warning("没有可用题目，本轮结束。")
+                st.session_state.round_phase = "summary"
+                st.rerun()
+            st.session_state.qid = q.id
         st.session_state.phase = "question"
         st.session_state.self_rating = None
 
@@ -229,6 +306,20 @@ if st.session_state.round_phase == "quiz":
     if q is None:
         st.session_state.qid = None
         st.rerun()
+
+    # 题型判断（answer_mode 分流）
+    qtype = (q.question_type or "").strip()
+    options_dict = {}
+    if q.options:
+        try:
+            _o = json.loads(q.options) if isinstance(q.options, str) else q.options
+            options_dict = _o if isinstance(_o, dict) else {}
+        except Exception:
+            options_dict = {}
+    is_judge = qtype == "判断"
+    is_choice = qtype == "选择" and bool(options_dict)
+    is_blank = qtype == "填空"
+    is_self = not (is_judge or is_choice or is_blank)
 
     # 侧栏
     with st.sidebar:
@@ -245,6 +336,7 @@ if st.session_state.round_phase == "quiz":
             st.session_state.qid = None
             st.session_state.phase = "question"
             st.session_state.self_rating = None
+            st.session_state.judge_result = None
             st.rerun()
         st.caption(f"已跳过 {len(st.session_state.skip_ids)} 道")
 
@@ -364,20 +456,41 @@ if st.session_state.round_phase == "quiz":
 
     if st.session_state.phase == "question":
         st.markdown("---")
-        st.markdown("#### 先尝试回忆，再选择：")
-        c1, c2, c3 = st.columns(3)
-        if c1.button("✅ 记得", use_container_width=True):
-            st.session_state.self_rating = "记得"
-            st.session_state.phase = "answer_confirm"
-            st.rerun()
-        if c2.button("🤔 模糊", use_container_width=True):
-            st.session_state.self_rating = "模糊"
-            st.session_state.phase = "answer_confirm"
-            st.rerun()
-        if c3.button("❌ 忘记了", use_container_width=True):
-            st.session_state.self_rating = "忘记"
-            st.session_state.phase = "error_select"
-            st.rerun()
+        if is_judge:
+            st.markdown("#### ⚖️ 判断对错：")
+            c1, c2 = st.columns(2)
+            if c1.button("✅ 正确（√）", use_container_width=True, key=f"judge_t_{q.id}"):
+                _judge_objective(q, user_answer="√")
+            if c2.button("❌ 错误（×）", use_container_width=True, key=f"judge_f_{q.id}"):
+                _judge_objective(q, user_answer="×")
+        elif is_choice:
+            st.markdown("#### 🔘 请选择：")
+            for key in ["A", "B", "C", "D"]:
+                if key in options_dict:
+                    if st.button(f"**{key}**. {options_dict[key]}",
+                                 use_container_width=True, key=f"opt_{q.id}_{key}"):
+                        _judge_objective(q, user_answer=key)
+        elif is_blank:
+            st.markdown("#### ✍️ 填写答案：")
+            st.caption("多个空用「；」分隔，同义词可任填其一")
+            user_ans = st.text_input("答案", key=f"blank_{q.id}", placeholder="在此输入答案")
+            if st.button("✅ 提交答案", type="primary", use_container_width=True, key=f"blank_submit_{q.id}"):
+                _judge_objective(q, user_answer=user_ans, is_blank=True)
+        else:
+            st.markdown("#### 先尝试回忆，再选择：")
+            c1, c2, c3 = st.columns(3)
+            if c1.button("✅ 记得", use_container_width=True):
+                st.session_state.self_rating = "记得"
+                st.session_state.phase = "answer_confirm"
+                st.rerun()
+            if c2.button("🤔 模糊", use_container_width=True):
+                st.session_state.self_rating = "模糊"
+                st.session_state.phase = "answer_confirm"
+                st.rerun()
+            if c3.button("❌ 忘记了", use_container_width=True):
+                st.session_state.self_rating = "忘记"
+                st.session_state.phase = "error_select"
+                st.rerun()
 
     if st.session_state.phase == "answer_confirm":
         st.markdown("---")
@@ -395,7 +508,15 @@ if st.session_state.round_phase == "quiz":
     if st.session_state.phase == "error_select":
         st.markdown("---")
         st.markdown("### 💡 答案")
-        st.markdown(q.answer or "（无答案）")
+        if st.session_state.get("judge_result"):
+            jr = st.session_state.judge_result
+            st.error(f"你的答案：{jr['user_answer'] or '（未作答）'}")
+            st.success(f"正确答案：{jr['correct_answer']}")
+            if q.explanation:
+                with st.expander("📖 解析"):
+                    st.write(q.explanation)
+        else:
+            st.markdown(q.answer or "（无答案）")
         st.markdown("---")
         st.markdown("#### 🩺 错因是？")
         error_options = ["记混了", "记错了", "没理解", "不会应用", "粗心"]
@@ -410,7 +531,14 @@ if st.session_state.round_phase == "quiz":
     if st.session_state.phase == "note_input":
         st.markdown("---")
         st.markdown("### 💡 答案")
-        st.markdown(q.answer or "（无答案）")
+        if st.session_state.get("judge_result"):
+            jr = st.session_state.judge_result
+            st.success(f"正确答案：{jr['correct_answer']}")
+            if q.explanation:
+                with st.expander("📖 解析"):
+                    st.write(q.explanation)
+        else:
+            st.markdown(q.answer or "（无答案）")
 
         st.markdown("---")
         st.markdown(f"**你的错因**：`{st.session_state.pending_error_type}`")
@@ -484,14 +612,14 @@ if st.session_state.round_phase == "summary":
     base = alt.Chart(df).encode(
         x=alt.X("自评:N", axis=alt.Axis(labelAngle=0, title=None,
                                         labelFontSize=13, tickSize=0,
-                                        domainColor="#666", labelColor="#ddd")),
+                                        domainColor="#94a3b8", labelColor="#334155")),
         y=alt.Y("次数:Q", axis=alt.Axis(title=None, labelFontSize=13,
-                                        tickSize=0, domainColor="#666",
-                                        gridColor="#333", gridOpacity=0.3,
-                                        labelColor="#ddd")),
+                                        tickSize=0, domainColor="#94a3b8",
+                                        gridColor="#e2e8f0", gridOpacity=0.6,
+                                        labelColor="#334155")),
     )
-    bars = base.mark_bar(size=80, cornerRadius=6, color="#5B9BD5")
-    labels = base.mark_text(dy=-10, fontSize=14, color="#ddd").encode(text="次数:Q")
+    bars = base.mark_bar(size=80, cornerRadius=6, color="#4A90E2")
+    labels = base.mark_text(dy=-10, fontSize=14, color="#334155").encode(text="次数:Q")
     st.altair_chart((bars + labels).properties(height=280), use_container_width=True)
 
     err_data = {}
@@ -507,15 +635,15 @@ if st.session_state.round_phase == "summary":
             base = alt.Chart(err_df).encode(
                 x=alt.X("错因:N", axis=alt.Axis(labelAngle=0, title=None,
                                                 labelFontSize=13, tickSize=0,
-                                                domainColor="#666", labelColor="#ddd"),
+                                                domainColor="#94a3b8", labelColor="#334155"),
                         sort=err_df["错因"].tolist()),
                 y=alt.Y("次数:Q", axis=alt.Axis(title=None, labelFontSize=13,
-                                                tickSize=0, domainColor="#666",
-                                                gridColor="#333", gridOpacity=0.3,
-                                                labelColor="#ddd")),
+                                                tickSize=0, domainColor="#94a3b8",
+                                                gridColor="#e2e8f0", gridOpacity=0.6,
+                                                labelColor="#334155")),
             )
             bars = base.mark_bar(size=60, cornerRadius=6, color="#E06C75")
-            labels = base.mark_text(dy=-10, fontSize=14, color="#ddd").encode(text="次数:Q")
+            labels = base.mark_text(dy=-10, fontSize=14, color="#334155").encode(text="次数:Q")
             st.altair_chart((bars + labels).properties(height=260), use_container_width=True)
 
             st.markdown("**本轮错题列表**")

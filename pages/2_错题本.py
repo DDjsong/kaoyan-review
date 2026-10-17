@@ -107,7 +107,23 @@ with tab1:
                 col3.metric("下次复习", ri.due.strftime("%m-%d") if ri.due else "—")
                 col4.metric("当前间隔", f"{ri.interval} 天")
 
-                if st.button(f"📦 手动归档", key=f"arch_{q.id}"):
+                c_act1, c_act2 = st.columns(2)
+                if c_act1.button(f"🔁 立刻重做", key=f"retry_{q.id}", use_container_width=True):
+                    st.session_state.retry_qid = q.id
+                    st.session_state.round_phase = "quiz"
+                    st.session_state.round_index = 0
+                    st.session_state.round_events = []
+                    st.session_state.round_chapter = "错题本"
+                    st.session_state.round_year = None
+                    st.session_state.round_size = 1
+                    st.session_state.qid = None
+                    st.session_state.phase = "question"
+                    st.session_state.self_rating = None
+                    st.session_state.skip_ids = set()
+                    st.session_state.return_to_qid = None
+                    st.session_state.last_question_info = None
+                    st.switch_page("pages/1_学习.py")
+                if c_act2.button(f"📦 手动归档", key=f"arch_{q.id}", use_container_width=True):
                     ri.state = "archived"
                     session.commit()
                     st.rerun()

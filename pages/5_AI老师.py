@@ -101,7 +101,7 @@ def build_summary():
             for name, cnt in top_kps:
                 lines.append(f"  - {name}: {cnt} 次")
 
-    # 最近 10 道错题（排除停用题）
+    # 最近 10 道错题（含题干、答案、解析；批量查询避免 N+1）
     recent_wrong_events = (
         session.query(StudyEvent)
         .filter(StudyEvent.item_type == "question", StudyEvent.is_correct == False)
@@ -110,11 +110,19 @@ def build_summary():
         .limit(10).all()
     )
     if recent_wrong_events:
-        lines.append("\n最近 10 道错题（题干前 50 字 + 错因）：")
+        wrong_qids = [e.item_id for e in recent_wrong_events]
+        q_map = {q.id: q for q in session.query(Question).filter(Question.id.in_(wrong_qids)).all()}
+        lines.append("\n最近 10 道错题（题干 + 正确答案 + 解析）：")
         for e in recent_wrong_events:
-            q = session.query(Question).filter(Question.id == e.item_id).first()
-            if q:
-                lines.append(f"  - [{q.year}年] {q.stem[:50]} | 错因：{e.error_type or '未选'}")
+            q = q_map.get(e.item_id)
+            if not q:
+                continue
+            line = f"  - [{q.year}年] 题干：{q.stem[:70]}"
+            line += f" | 正确答案：{(q.answer or '')[:50]}"
+            if q.explanation:
+                line += f" | 解析：{q.explanation[:80]}"
+            line += f" | 错因：{e.error_type or '未选'}"
+            lines.append(line)
 
     return "\n".join(lines)
 

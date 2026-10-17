@@ -11,7 +11,7 @@ def _active_filter():
     return func.coalesce(Question.data_status, "正常") != "停用"
 
 
-def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
+def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filter=None):
     """加权抽题。查询已优化为批量，避免逐题查库。"""
     now = datetime.now()
     exclude = set(exclude_ids) | set(skip_ids)
@@ -25,6 +25,12 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
                     StudyEvent.is_correct == False)
             .distinct().all()
         ))
+        if year_filter:
+            year_qids = set(
+                r[0] for r in session.query(Question.id)
+                .filter(Question.year == year_filter).all()
+            )
+            wrong_qids = [qid for qid in wrong_qids if qid in year_qids]
         if not wrong_qids:
             return None
 
@@ -49,6 +55,15 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
                 .filter(Question.id == chosen_id, _active_filter())
                 .first())
 
+    # ============ 套卷模式（按年份 + 题号顺序） ============
+    if year_filter and chapter_filter != "错题本":
+        qq = (session.query(Question)
+              .filter(_active_filter(), Question.year == year_filter)
+              .filter(~Question.id.in_(exclude)))
+        if chapter_filter != "全部章节":
+            qq = qq.filter(Question.chapter_name == chapter_filter)
+        return qq.order_by(Question.question_no, Question.id).first()
+
     # ============ 普通模式 ============
     # 1) 一次查询：所有做过的题
     done_qids = set(
@@ -62,6 +77,8 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids):
     all_q = session.query(Question).filter(_active_filter())
     if chapter_filter != "全部章节":
         all_q = all_q.filter(Question.chapter_name == chapter_filter)
+    if year_filter:
+        all_q = all_q.filter(Question.year == year_filter)
     all_candidates = all_q.all()
     if not all_candidates:
         return None
