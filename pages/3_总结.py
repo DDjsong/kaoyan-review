@@ -172,7 +172,15 @@ st.markdown("---")
 
 # ---------------- 章节掌握度 ----------------
 st.markdown("### 📚 章节掌握度")
-st.caption("按题目的章节统计做题情况")
+st.caption("掌握度 = 该章做对的题数 ÷ 该章总题数，综合了正确率与刷题完成度")
+
+# 每章总题数（排除停用题）
+chapter_totals = dict(
+    session.query(Question.chapter_name, func.count())
+    .filter(active_q_filter())
+    .group_by(Question.chapter_name)
+    .all()
+)
 
 qid_to_chapter = dict(
     session.query(Question.id, Question.chapter_name)
@@ -192,14 +200,19 @@ for e in events:
 if chapter_stats:
     chapter_rows = []
     for ch, s in chapter_stats.items():
+        n_total = chapter_totals.get(ch, 0)
         acc = s["correct"] / s["total"] * 100 if s["total"] else 0
+        completion = s["total"] / n_total * 100 if n_total else 0
+        mastery = s["correct"] / n_total * 100 if n_total else 0
         chapter_rows.append({
             "章节": ch,
             "做题数": s["total"],
-            "正确数": s["correct"],
+            "总题数": n_total,
             "正确率": round(acc, 1),
+            "完成度": round(completion, 1),
+            "掌握度": round(mastery, 1),
         })
-    chapter_df = pd.DataFrame(chapter_rows).sort_values("正确率")
+    chapter_df = pd.DataFrame(chapter_rows).sort_values("掌握度")
 
     bars = alt.Chart(chapter_df).mark_bar(size=24, cornerRadius=6, color=BLUE).encode(
         y=alt.Y(
@@ -208,18 +221,18 @@ if chapter_stats:
             sort=chapter_df["章节"].tolist(),
         ),
         x=alt.X(
-            "正确率:Q",
-            axis=alt.Axis(title="正确率 (%)", **AXIS_STYLE),
+            "掌握度:Q",
+            axis=alt.Axis(title="掌握度 (%)", **AXIS_STYLE),
             scale=alt.Scale(domain=[0, 100]),
         ),
-        tooltip=["章节", "做题数", "正确数", "正确率"],
+        tooltip=["章节", "做题数", "总题数", "正确率", "完成度", "掌握度"],
     )
     labels = alt.Chart(chapter_df).mark_text(
         align="left", dx=6, fontSize=13, color=LABEL_COLOR, fontWeight="bold"
     ).encode(
         y=alt.Y("章节:N", sort=chapter_df["章节"].tolist()),
-        x=alt.X("正确率:Q"),
-        text=alt.Text("正确率:Q", format=".1f"),
+        x=alt.X("掌握度:Q"),
+        text=alt.Text("掌握度:Q", format=".1f"),
     )
     st.altair_chart((bars + labels).properties(height=max(300, len(chapter_df) * 40)),
                     use_container_width=True)

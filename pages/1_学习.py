@@ -34,6 +34,8 @@ for key, default in [
     ("round_events", []),
     ("round_chapter", "全部章节"),
     ("round_year", None),
+    ("round_type", None),
+    ("round_questions", []),
     ("retry_qid", None),
     ("qid", None),
     ("phase", "question"),           # question / answer_confirm / error_select
@@ -71,8 +73,12 @@ if st.session_state.round_phase == "cover":
     year_list = sorted([r[0] for r in year_rows if r[0]])
     year_options = ["不限年份"] + [f"{y} 年" for y in year_list]
 
-    # ---------- 出题范围 + 年份 + 本轮题数 并排 ----------
-    c1, c2, c3 = st.columns([2, 1, 1])
+    # ---------- 题型列表 ----------
+    type_options = ["不限题型", "选择题", "判断题", "填空题", "名词解释", "问答题"]
+    type_map = {"选择题": "选择", "判断题": "判断", "填空题": "填空", "名词解释": "名词解释", "问答题": "问答"}
+
+    # ---------- 出题范围 + 年份 + 题型 + 本轮题数 并排 ----------
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
 
     with c1:
         st.markdown("#### 📚 出题范围")
@@ -100,6 +106,20 @@ if st.session_state.round_phase == "cover":
         year_choice = None if year_choice_label == "不限年份" else int(year_choice_label.replace(" 年", ""))
 
     with c3:
+        st.markdown("#### 🏷 题型")
+        default_type_idx = 0
+        if st.session_state.round_type:
+            for label, val in type_map.items():
+                if val == st.session_state.round_type:
+                    default_type_idx = type_options.index(label)
+                    break
+        type_choice_label = st.selectbox(
+            "题型", type_options, index=default_type_idx,
+            key="cover_type", label_visibility="collapsed",
+        )
+        type_choice = type_map.get(type_choice_label)
+
+    with c4:
         st.markdown("#### 🔢 本轮题数")
         round_size = st.number_input(
             "题数", min_value=1, max_value=200, value=round_size,
@@ -123,7 +143,13 @@ if st.session_state.round_phase == "cover":
         with st.spinner("正在准备题目..."):
             st.session_state.round_chapter = chapter_choice
             st.session_state.round_year = year_choice
+            st.session_state.round_type = type_choice
             st.session_state.round_size = round_size
+            # 预取本轮题目（一次性抽好，之后从内存取题，避免每次点击查库）
+            questions = quiz_module.pick_questions_batch(
+                session, round_size, chapter_choice, year_choice, type_choice
+            )
+            st.session_state.round_questions = [q.id for q in questions]
             st.session_state.round_index = 0
             st.session_state.round_events = []
             st.session_state.qid = None
@@ -287,18 +313,15 @@ if st.session_state.round_phase == "quiz":
             st.session_state.qid = retry_qid
             st.session_state.retry_qid = None
         else:
-            q = quiz_module.pick_next_question(
-                session,
-                chapter_filter=st.session_state.round_chapter,
-                exclude_ids=set(e["qid"] for e in st.session_state.round_events),
-                skip_ids=st.session_state.skip_ids,
-                year_filter=st.session_state.round_year,
-            )
-            if q is None:
+            # 从预取的本轮题目列表取下一题（不查库，流畅度更高）
+            idx = st.session_state.round_index
+            qids = st.session_state.round_questions
+            if idx < len(qids):
+                st.session_state.qid = qids[idx]
+            else:
                 st.warning("没有可用题目，本轮结束。")
                 st.session_state.round_phase = "summary"
                 st.rerun()
-            st.session_state.qid = q.id
         st.session_state.phase = "question"
         st.session_state.self_rating = None
 
@@ -331,8 +354,7 @@ if st.session_state.round_phase == "quiz":
             st.session_state.round_phase = "summary"
             st.rerun()
         if st.button("🔄 换一题", use_container_width=True):
-            if st.session_state.qid:
-                st.session_state.skip_ids.add(st.session_state.qid)
+            st.session_state.round_index += 1  # 跳过当前题，看下一题
             st.session_state.qid = None
             st.session_state.phase = "question"
             st.session_state.self_rating = None
