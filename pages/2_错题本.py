@@ -17,6 +17,7 @@ st.set_page_config(page_title="错题本", page_icon="📕", layout="wide")
 st.title("📕 错题本")
 
 session = get_session()
+subject = st.session_state.get("subject", "生化")
 
 # 找出所有有错误记录的题目 id
 error_qids = [
@@ -36,6 +37,7 @@ rows = (
     session.query(Question, ReviewItem)
     .join(ReviewItem, (ReviewItem.item_type == "question") & (ReviewItem.item_id == Question.id))
     .filter(Question.id.in_(error_qids))
+    .filter(Question.subject == subject)
     .filter(active_q_filter())
     .order_by(ReviewItem.due)
     .all()

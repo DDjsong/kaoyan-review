@@ -11,10 +11,13 @@ def _active_filter():
     return func.coalesce(Question.data_status, "正常") != "停用"
 
 
-def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filter=None):
+def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filter=None, subject_filter=None):
     """加权抽题。查询已优化为批量，避免逐题查库。"""
     now = datetime.now()
     exclude = set(exclude_ids) | set(skip_ids)
+
+    def _subj(q):
+        return q.filter(Question.subject == subject_filter) if subject_filter else q
 
     # ============ 错题本模式 ============
     if chapter_filter == "错题本":
@@ -51,8 +54,8 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filt
         else:
             chosen_id = random.choice(candidates)
 
-        return (session.query(Question)
-                .filter(Question.id == chosen_id, _active_filter())
+        return (_subj(session.query(Question)
+                .filter(Question.id == chosen_id, _active_filter()))
                 .first())
 
     # ============ 套卷模式（按年份 + 题号顺序） ============
@@ -62,6 +65,7 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filt
               .filter(~Question.id.in_(exclude)))
         if chapter_filter != "全部章节":
             qq = qq.filter(Question.chapter_name == chapter_filter)
+        qq = _subj(qq)
         return qq.order_by(Question.question_no, Question.id).first()
 
     # ============ 普通模式 ============
@@ -79,6 +83,7 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filt
         all_q = all_q.filter(Question.chapter_name == chapter_filter)
     if year_filter:
         all_q = all_q.filter(Question.year == year_filter)
+    all_q = _subj(all_q)
     all_candidates = all_q.all()
     if not all_candidates:
         return None
@@ -173,9 +178,12 @@ def pick_next_question(session, chapter_filter, exclude_ids, skip_ids, year_filt
     return q_map[qid]
 
 
-def pick_questions_batch(session, n, chapter_filter, year_filter=None, type_filter=None):
+def pick_questions_batch(session, n, chapter_filter, year_filter=None, type_filter=None, subject_filter=None):
     """一次性抽 n 道题（加权、不重复）。开始本轮时调用一次，之后从内存取题，避免每次点击查库。"""
     now = datetime.now()
+
+    def _subj(q):
+        return q.filter(Question.subject == subject_filter) if subject_filter else q
 
     # ============ 套卷模式（按年份 + 题号顺序） ============
     if year_filter and chapter_filter != "错题本":
@@ -184,6 +192,7 @@ def pick_questions_batch(session, n, chapter_filter, year_filter=None, type_filt
             qq = qq.filter(Question.chapter_name == chapter_filter)
         if type_filter:
             qq = qq.filter(Question.question_type == type_filter)
+        qq = _subj(qq)
         return qq.order_by(Question.question_no, Question.id).limit(n).all()
 
     # ============ 错题本模式 ============
@@ -211,7 +220,7 @@ def pick_questions_batch(session, n, chapter_filter, year_filter=None, type_filt
         remaining = [qid for qid in wrong_qids if qid not in due_ids]
         random.shuffle(remaining)
         chosen_ids = (due_ids + remaining)[:n]
-        q_map = {q.id: q for q in session.query(Question).filter(Question.id.in_(chosen_ids), _active_filter()).all()}
+        q_map = {q.id: q for q in _subj(session.query(Question).filter(Question.id.in_(chosen_ids), _active_filter())).all()}
         return [q_map[qid] for qid in chosen_ids if qid in q_map]
 
     # ============ 普通模式（加权抽 n 道） ============
@@ -226,6 +235,7 @@ def pick_questions_batch(session, n, chapter_filter, year_filter=None, type_filt
         all_q = all_q.filter(Question.chapter_name == chapter_filter)
     if type_filter:
         all_q = all_q.filter(Question.question_type == type_filter)
+    all_q = _subj(all_q)
     all_candidates = all_q.all()
     if not all_candidates:
         return []

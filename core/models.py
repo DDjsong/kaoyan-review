@@ -25,6 +25,7 @@ class KnowledgePoint(Base):
     importance = Column(Integer, default=3)
     summary = Column(Text, nullable=True)
     source_ref = Column(String(200), nullable=True)
+    subject = Column(String(20), nullable=True)       # 科目：生化/细胞
 
 
 class Question(Base):
@@ -46,6 +47,11 @@ class Question(Base):
     question_no = Column(Integer, nullable=True)      # 题号
     answer_mode = Column(String(20), nullable=True)   # choice/input/self
     data_status = Column(String(20), default="正常")  # 正常/存疑/停用
+    subject = Column(String(20), nullable=True)       # 科目：生化/细胞
+    kp_location = Column(Text, nullable=True)         # 知识点定位（第X章 第X节 第X小节）
+    kp_key_point = Column(Text, nullable=True)        # 重点
+    kp_exam_point = Column(Text, nullable=True)       # 考点
+    kp_frequency = Column(String(50), nullable=True)  # 考频（高频/中频/低频 · 次数）
 
 
 class QuestionKP(Base):

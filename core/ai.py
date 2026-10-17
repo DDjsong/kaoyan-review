@@ -165,7 +165,7 @@ CHAT_SYSTEM_TEMPLATE = """你是一位资深生物化学考研辅导老师，正
 """
 
 
-def _build_student_context(session):
+def _build_student_context(session, subject=None):
     """构建学生数据摘要，作为 AI 的上下文"""
     from core.models import StudyEvent, Question, KnowledgePoint, QuestionKP, active_q_filter
     from collections import Counter
@@ -176,10 +176,11 @@ def _build_student_context(session):
     if not events:
         return "学生还没有做题记录。"
 
-    # 排除「已停用」题目的做题记录，避免污染 AI 诊断
-    active_qids = set(
-        r[0] for r in session.query(Question.id).filter(active_q_filter()).all()
-    )
+    # 排除「已停用」题目和其他科目的做题记录，避免污染 AI 诊断
+    qq = session.query(Question.id).filter(active_q_filter())
+    if subject:
+        qq = qq.filter(Question.subject == subject)
+    active_qids = set(r[0] for r in qq.all())
     events = [e for e in events if e.item_id in active_qids]
     if not events:
         return "学生还没有做题记录。"
@@ -261,13 +262,14 @@ def _build_student_context(session):
     return "\n".join(lines)
 
 
-def chat_with_ai(session, user_message, history):
+def chat_with_ai(session, user_message, history, subject=None):
     """与 AI 对话。
     session: 数据库 session
     user_message: 用户本轮消息
     history: [{"role": "user"/"assistant", "content": "..."}, ...]
+    subject: 科目（生化/细胞），用于过滤学习数据上下文
     """
-    student_context = _build_student_context(session)
+    student_context = _build_student_context(session, subject)
     system_prompt = CHAT_SYSTEM_TEMPLATE.format(student_context=student_context)
 
     messages = [{"role": "system", "content": system_prompt}]

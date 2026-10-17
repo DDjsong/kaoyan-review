@@ -22,14 +22,20 @@ st.caption("基于你所有做题记录的整体诊断，越用越懂你")
 
 session = get_session()
 
+# 科目切换
+if "ai_subject" not in st.session_state:
+    st.session_state.ai_subject = "生化"
+subject = st.radio("科目", ["生化", "细胞"], horizontal=True, key="ai_subject")
+
 
 # ---------- 1. 收集数据 ----------
 events = session.query(StudyEvent).filter(StudyEvent.item_type == "question").all()
 
-# 排除「已停用」题目的做题记录，避免污染 AI 诊断
+# 排除「已停用」和其他科目的做题记录，避免污染 AI 诊断
 _active_qids = set(
     r[0] for r in session.query(Question.id)
-    .filter(func.coalesce(Question.data_status, "正常") != "停用").all()
+    .filter(func.coalesce(Question.data_status, "正常") != "停用")
+    .filter(Question.subject == subject).all()
 )
 events = [e for e in events if e.item_id in _active_qids]
 
@@ -247,6 +253,7 @@ if st.session_state.get("chat_pending"):
                     session,
                     st.session_state.chat_history[-1]["content"],
                     st.session_state.chat_history[:-1],
+                    subject=subject,
                 )
                 st.session_state.chat_history.append(
                     {"role": "assistant", "content": reply}

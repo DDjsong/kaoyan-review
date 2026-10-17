@@ -16,6 +16,7 @@ st.set_page_config(page_title="总结", page_icon="📊", layout="wide")
 st.title("📊 学习总结")
 
 session = get_session()
+subject = st.session_state.get("subject", "生化")
 
 # ---------------- 时间范围 ----------------
 range_option = st.radio(
@@ -41,9 +42,10 @@ if start:
     q = q.filter(StudyEvent.created_at >= start)
 events = q.all()
 
-# 排除「已停用」题目的做题记录
+# 排除「已停用」题目和其他科目的做题记录
 _active_qids = set(
-    r[0] for r in session.query(Question.id).filter(active_q_filter()).all()
+    r[0] for r in session.query(Question.id)
+    .filter(active_q_filter(), Question.subject == subject).all()
 )
 events = [e for e in events if e.item_id in _active_qids]
 

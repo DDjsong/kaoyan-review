@@ -147,7 +147,8 @@ if st.session_state.round_phase == "cover":
             st.session_state.round_size = round_size
             # 预取本轮题目（一次性抽好，之后从内存取题，避免每次点击查库）
             questions = quiz_module.pick_questions_batch(
-                session, round_size, chapter_choice, year_choice, type_choice
+                session, round_size, chapter_choice, year_choice, type_choice,
+                subject_filter=st.session_state.get("subject", "生化"),
             )
             st.session_state.round_questions = [q.id for q in questions]
             st.session_state.round_index = 0
@@ -305,6 +306,26 @@ if st.session_state.round_phase == "quiz":
             }
             st.session_state.phase = "error_select"
             st.rerun()
+
+
+    def show_kp_info(q):
+        """展示知识点定位/重点/考点/考频（答案放在这些信息下面）"""
+        parts = []
+        if q.kp_text:
+            parts.append(f"**📌 知识点**：{q.kp_text}")
+        if q.kp_location:
+            parts.append(f"**📍 章节定位**：{q.kp_location}")
+        if q.kp_key_point:
+            parts.append(f"**⭐ 重点**：{q.kp_key_point}")
+        if q.kp_exam_point:
+            parts.append(f"**🎯 考点**：{q.kp_exam_point}")
+        if q.kp_frequency:
+            parts.append(f"**📊 考频**：{q.kp_frequency}")
+        if parts:
+            st.markdown("---")
+            st.markdown("### 📚 知识点详解")
+            for p in parts:
+                st.markdown(p)
 
 
     if st.session_state.qid is None:
@@ -516,6 +537,7 @@ if st.session_state.round_phase == "quiz":
 
     if st.session_state.phase == "answer_confirm":
         st.markdown("---")
+        show_kp_info(q)
         st.markdown("### 💡 答案")
         st.markdown(q.answer or "（无答案）")
         st.markdown("---")
@@ -529,6 +551,7 @@ if st.session_state.round_phase == "quiz":
 
     if st.session_state.phase == "error_select":
         st.markdown("---")
+        show_kp_info(q)
         st.markdown("### 💡 答案")
         if st.session_state.get("judge_result"):
             jr = st.session_state.judge_result
@@ -552,6 +575,7 @@ if st.session_state.round_phase == "quiz":
 
     if st.session_state.phase == "note_input":
         st.markdown("---")
+        show_kp_info(q)
         st.markdown("### 💡 答案")
         if st.session_state.get("judge_result"):
             jr = st.session_state.judge_result

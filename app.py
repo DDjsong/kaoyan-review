@@ -1,12 +1,14 @@
 import streamlit as st
 
+from core import pages_impl
+
 st.set_page_config(
     page_title="考研专业课复习系统",
     page_icon="📚",
     layout="wide",
 )
 
-# ============== 自定义样式 ==============
+# ============== 自定义样式（全局注入，必须在 st.navigation 之前） ==============
 st.markdown("""
 <style>
 /* 隐藏 Streamlit 默认的页脚和菜单 */
@@ -90,70 +92,46 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ============== 页面内容 ==============
-st.markdown('<div class="hero-title">📚 考研专业课复习系统</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="hero-subtitle">主动回忆 · 间隔重复 · AI 辅助 · 让背诵更高效</div>',
-    unsafe_allow_html=True,
-)
 
-# 四张卡片
-col1, col2, col3, col4 = st.columns(4, gap="medium")
+# ============== 构建页面 ==============
+# 同一个函数文件/闭包不能重复指向（duplicate page 报错），
+# 这里每个「科目-页面」都是一个独立闭包实例，并分配唯一的 url_path。
 
-with col1:
-    st.markdown("""
-    <div class="feature-card">
-        <div class="feature-icon">📖</div>
-        <div class="feature-title">刷题</div>
-        <div class="feature-desc">
-            按范围出题：全部 / 指定章节 / 错题本。<br>
-            自评 → 看答案 → 校准 → 选错因。
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+def _mk(fn, subject):
+    def _page():
+        fn(subject)
+    return _page
 
-with col2:
-    st.markdown("""
-    <div class="feature-card">
-        <div class="feature-icon">📕</div>
-        <div class="feature-title">错题本</div>
-        <div class="feature-desc">
-            自动记录错题，按知识点聚合。<br>
-            按遗忘曲线安排复习。
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
-with col3:
-    st.markdown("""
-    <div class="feature-card">
-        <div class="feature-icon">📊</div>
-        <div class="feature-title">总结</div>
-        <div class="feature-desc">
-            学习统计、自评分布、错因分析、<br>
-            薄弱知识点、章节掌握度。
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+biochem_study = st.Page(
+    _mk(pages_impl.study_page, "生化"), title="学习", icon="📖", url_path="study_biochem")
+biochem_wrong = st.Page(
+    _mk(pages_impl.wrong_page, "生化"), title="错题本", icon="📕", url_path="wrong_biochem")
+biochem_summary = st.Page(
+    _mk(pages_impl.summary_page, "生化"), title="总结", icon="📊", url_path="summary_biochem")
 
-with col4:
-    st.markdown("""
-    <div class="feature-card">
-        <div class="feature-icon">🤖</div>
-        <div class="feature-title">AI 老师</div>
-        <div class="feature-desc">
-            错因诊断 · 知识点精讲<br>
-            记忆技巧 · 相近题推荐
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+cell_study = st.Page(
+    _mk(pages_impl.study_page, "细胞"), title="学习", icon="📖", url_path="study_cell")
+cell_wrong = st.Page(
+    _mk(pages_impl.wrong_page, "细胞"), title="错题本", icon="📕", url_path="wrong_cell")
+cell_summary = st.Page(
+    _mk(pages_impl.summary_page, "细胞"), title="总结", icon="📊", url_path="summary_cell")
 
-# 底部提示
-st.markdown("---")
-st.markdown("""
-<div class="footer-note">
-    👈 从左侧选择页面开始使用
-    <br><br>
-    v0.1 · 数据源：现代生物化学真题
-</div>
-""", unsafe_allow_html=True)
+# 注册「科目 -> 学习页 Page」，供错题本「立刻重做」用 st.switch_page(Page) 跳转
+pages_impl.register_study_pages({
+    "生化": biochem_study,
+    "细胞": cell_study,
+})
+
+pages = {
+    "": [
+        st.Page(pages_impl.home_page, title="首页", icon="🏠", default=True),
+    ],
+    "生化": [biochem_study, biochem_wrong, biochem_summary],
+    "细胞": [cell_study, cell_wrong, cell_summary],
+    "AI 老师": [st.Page(pages_impl.ai_page, title="AI 老师", icon="🤖", url_path="ai")],
+    "设置": [st.Page(pages_impl.settings_page, title="设置", icon="⚙️", url_path="settings")],
+}
+
+pg = st.navigation(pages)
+pg.run()
