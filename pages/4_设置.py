@@ -118,7 +118,7 @@ with tab2:
                     kp.name,
                     min_value=1, max_value=5,
                     value=int(kp.importance),
-                    key=f"kp_slider_{kp.id}",
+                    key=f"kp_slider_{chap}_{kp.id}",
                 )
                 if new_val != kp.importance:
                     kp.importance = new_val
